@@ -17,10 +17,10 @@ login = LoginManager(app)
 login.login_view = 'login'
 babel = Babel(app)
 
-user_collection = db.users
-post_collection = db.posts
 
-user_collection.create_index([('username', 1)], unique=True)
+db.users.create_index([('username', 1)], unique=True)
+#db.posts.drop_index('author_id_1')
+#db.posts.create_index([('author_id', 1)], name='author_id_1', unique=False)
 
 if not app.debug:
     if app.config['MAIL_SERVER']:

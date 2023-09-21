@@ -27,6 +27,55 @@ def before_request():
         )
 
 
+@app.route('/', methods=['GET', 'POST'])
+@app.route('/index', methods=['GET', 'POST'])
+@login_required
+def index():
+    form = PostForm()
+    if form.validate_on_submit():
+        post_data = {
+            'body': form.post.data,
+            'author_id': current_user._id,  
+            'timestamp': datetime.utcnow()  
+        }
+        Post.save(post_data)
+        flash(_('Your post is now live!'))
+        return redirect(url_for('index'))
+    
+    page = request.args.get('page', 1, type=int)
+    
+    pipeline = [
+        {
+            "$lookup": {
+                "from": "users",
+                "localField": "author_id",
+                "foreignField": "_id",
+                "as": "user"
+            }
+        },
+        {
+            "$unwind": "$user"
+        },
+        {
+            "$sort": {"timestamp": -1}
+        },
+        {
+            "$skip": (page - 1) * app.config['POSTS_PER_PAGE']
+        },
+        {
+            "$limit": app.config['POSTS_PER_PAGE']
+        }
+    ]
+
+    posts_collection = db.posts
+    posts = list(posts_collection.aggregate(pipeline))
+
+    next_url = url_for('index', page=page + 1) if len(posts) == app.config['POSTS_PER_PAGE'] else None
+    prev_url = url_for('index', page=page - 1) if page > 1 else None
+    
+    return render_template("index.html", title='Home Page', form=form, posts=posts, next_url=next_url, prev_url=prev_url, user=current_user)
+
+
 @app.route('/explore')
 @login_required
 def explore():
@@ -63,54 +112,6 @@ def explore():
     prev_url = url_for('explore', page=page - 1) if page > 1 else None
 
     return render_template('index.html', title=_('Explore'), posts=posts, next_url=next_url, prev_url=prev_url, user=current_user)
-
-
-@app.route('/')
-@app.route('/index')
-@login_required
-def index():
-    form = PostForm()
-    if form.validate_on_submit():
-        post_data = {
-            'body': form.post.data,
-            'author_id': current_user._id,  
-            'timestamp': datetime.utcnow()  
-        }
-        db.posts.insert_one(post_data)
-        flash(_('Your post is now live!'))
-        return redirect(url_for('index'))
-    
-    page = request.args.get('page', 1, type=int)
-    
-    pipeline = [
-        {
-            "$lookup": {
-                "from": "users",
-                "localField": "author_id",
-                "foreignField": "_id",
-                "as": "user"
-            }
-        },
-        {
-            "$unwind": "$user"
-        },
-        {
-            "$sort": {"timestamp": -1}
-        },
-        {
-            "$skip": (page - 1) * app.config['POSTS_PER_PAGE']
-        },
-        {
-            "$limit": app.config['POSTS_PER_PAGE']
-        }
-    ]
-
-    posts = list(db.posts.aggregate(pipeline))
-
-    next_url = url_for('index', page=page + 1) if len(posts) == app.config['POSTS_PER_PAGE'] else None
-    prev_url = url_for('index', page=page - 1) if page > 1 else None
-    
-    return render_template("index.html", title='Home Page', form=form, posts=posts, next_url=next_url, prev_url=prev_url, user=current_user)
 
 
 @app.route('/login', methods=['GET', 'POST'])

@@ -1,12 +1,11 @@
 from hashlib import md5
-
-from flask import flash
-from app import user_collection, post_collection, login
+from app import db, login
 from datetime import datetime
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 
-
+user_collection = db.users
+post_collection = db.posts
 
 @login.user_loader
 def load_user(user_id):
@@ -71,21 +70,25 @@ class User(UserMixin):
             self.update_2rgs({"following": self.following})
     
     def followed_posts(self):
-        pass
+        followed_ids = self.following
+        
+        followed_ids.append(self._id)
+        
+        followed_posts = post_collection.find({"user_id": {"$in": followed_ids}})
+        
+        followed_posts = followed_posts.sort("timestamp", -1)
+        
+        return followed_posts
     
 
 class Post:
-    def __init__(self, body, user_id):
-        self.body = body
-        self.timestamp = datetime.utcnow()
-        self.user_id = user_id
+    def __init__(self, post_data):
+        self.body = post_data['body']
+        self.timestamp = post_data['timestamp']
+        self.user_id = post_data['user_id']
 
     def save(self):
-        post_collection.insert_one({
-            'body': self.body,
-            'timesstamp': self.timestamp,
-            'user_id': self.user_id
-        })
+        post_collection.insert_one(self).inserted_id   
 
     @staticmethod
     def find_all_with_user_info():
