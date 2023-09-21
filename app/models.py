@@ -1,4 +1,6 @@
 from hashlib import md5
+
+from flask import flash
 from app import user_collection, post_collection, login
 from datetime import datetime
 from flask_login import UserMixin
@@ -29,7 +31,10 @@ class User(UserMixin):
         return self._id
 
     def save(self):
-        self.id = user_collection.insert_one(self.__dict__).inserted_id
+        user_collection.insert_one(self.__dict__).inserted_id
+
+    def update_2rgs(self, update_values):
+        user_collection.update_one({"_id": self._id}, {'$set': update_values})
 
     def update(self):
         user_collection.update_one({"_id": self._id},{'$set': self.__dict__})
@@ -52,18 +57,18 @@ class User(UserMixin):
         digest = md5(self.email.lower().encode('utf-8')).hexdigest()
         return 'https://www.gravatar.com/avatar/{}?d=identicon&s={}'.format(digest, size)
     
-    def follow(self, user_to_follow):
-        if user_to_follow._id != self._id and not self.is_following(user_to_follow):
-            self.following.append(user_to_follow._id)
-            self.update({"following": self.following})
-
-    def unfollow(self, user_to_unfollow):
-        if user_to_unfollow._id != self._id and self.is_following(user_to_unfollow):
-            self.following.remove(user_to_unfollow._id)
-            self.update({"following": self.following})
-    
     def is_following(self, user_id):
         return str(user_id) in self.following
+    
+    def follow(self, user):
+        if user._id != self._id and user._id not in self.following:
+            self.following.append(user._id)
+            self.update_2rgs({"following": self.following})
+
+    def unfollow(self, user_to_unfollow):
+        if user_to_unfollow._id != self._id and user_to_unfollow._id in self.following:
+            self.following.remove(user_to_unfollow._id)
+            self.update_2rgs({"following": self.following})
     
     def followed_posts(self):
         pass
@@ -81,3 +86,27 @@ class Post:
             'timesstamp': self.timestamp,
             'user_id': self.user_id
         })
+
+    @staticmethod
+    def find_all_with_user_info():
+        pipeline = [
+            {
+                "$lookup": {
+                    "from": "users",
+                    "localfield": "user_id",
+                    "foreignField": "_id",
+                    "as": "user"
+                }
+            },
+            {
+                "$unwind": "$user"
+            }
+        ]
+
+        posts = post_collection.aggregate(pipeline)
+
+        return posts
+    
+    @staticmethod
+    def find_by_user_id(user_id):
+        return post_collection.find({'user_id': user_id})
