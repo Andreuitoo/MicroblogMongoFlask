@@ -1,9 +1,9 @@
 from bson import ObjectId
 from flask import render_template, flash, redirect, url_for, request, g
 from app import app, db
-from app.forms import LoginForm, RegistrationForm, EditProfileForm, EmptyForm
+from app.forms import LoginForm, RegistrationForm, EditProfileForm, EmptyForm, PostForm
 from flask_login import current_user, login_user, logout_user, login_required
-from app.models import User
+from app.models import User, Post
 from werkzeug.urls import url_parse
 from datetime import datetime
 from flask_babel import _, get_locale
@@ -27,21 +27,90 @@ def before_request():
         )
 
 
+@app.route('/explore')
+@login_required
+def explore():
+    page = request.args.get('page', 1, type=int)
+    
+    pipeline = [
+        {
+            "$lookup": {
+                "from": "users",
+                "localField": "author_id",
+                "foreignField": "_id",
+                "as": "user"
+            }
+        },
+        {
+            "$unwind": "$user"
+        },
+        {
+            "$sort": {"timestamp": -1}
+        },
+        {
+            "$skip": (page - 1) * app.config['POSTS_PER_PAGE']
+        },
+        {
+            "$limit": app.config['POSTS_PER_PAGE']
+        }
+    ]
+    
+    posts = list(db.posts.aggregate(pipeline))
+    
+    total_posts = db.posts.count_documents({})
+    
+    next_url = url_for('explore', page=page + 1) if total_posts > page * app.config['POSTS_PER_PAGE'] else None
+    prev_url = url_for('explore', page=page - 1) if page > 1 else None
+
+    return render_template('index.html', title=_('Explore'), posts=posts, next_url=next_url, prev_url=prev_url, user=current_user)
+
+
 @app.route('/')
 @app.route('/index')
 @login_required
 def index():
-    posts = [
+    form = PostForm()
+    if form.validate_on_submit():
+        post_data = {
+            'body': form.post.data,
+            'author_id': current_user._id,  
+            'timestamp': datetime.utcnow()  
+        }
+        db.posts.insert_one(post_data)
+        flash(_('Your post is now live!'))
+        return redirect(url_for('index'))
+    
+    page = request.args.get('page', 1, type=int)
+    
+    pipeline = [
         {
-            'author': {'username': 'John'},
-            'body': 'Beautiful day in Portland!'
+            "$lookup": {
+                "from": "users",
+                "localField": "author_id",
+                "foreignField": "_id",
+                "as": "user"
+            }
         },
         {
-            'author': {'username': 'Susan'},
-            'body': 'The Avengers movie was so cool!'
+            "$unwind": "$user"
+        },
+        {
+            "$sort": {"timestamp": -1}
+        },
+        {
+            "$skip": (page - 1) * app.config['POSTS_PER_PAGE']
+        },
+        {
+            "$limit": app.config['POSTS_PER_PAGE']
         }
     ]
-    return render_template('index.html', title='Home', posts=posts)
+
+    posts = list(db.posts.aggregate(pipeline))
+
+    next_url = url_for('index', page=page + 1) if len(posts) == app.config['POSTS_PER_PAGE'] else None
+    prev_url = url_for('index', page=page - 1) if page > 1 else None
+    
+    return render_template("index.html", title='Home Page', form=form, posts=posts, next_url=next_url, prev_url=prev_url, user=current_user)
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -114,12 +183,21 @@ def register():
 @login_required
 def user(username):
     user = User.find_by_username(username)
-    posts = [
-        {'author': user, 'body': 'Test post #1'},
-        {'author': user, 'body': 'Test post #2'}
-    ]
+    page = request.args.get('page', 1, type=int)
+    
+    user_posts_cursor = db.posts.find({'user_id': ObjectId(user._id)}).sort('timestamp', -1)
+
+    
+    total_posts = db.posts.count_documents({'user_id':ObjectId(user._id)})
+    
+    posts = user_posts_cursor.skip((page - 1) * app.config['POSTS_PER_PAGE']).limit(app.config['POSTS_PER_PAGE'])
+    
+    next_url = url_for('user', username=username, page=page + 1) if total_posts > page * app.config['POSTS_PER_PAGE'] else None
+    prev_url = url_for('user', username=username, page=page - 1) if page > 1 else None
+    
     form = EmptyForm()
-    return render_template('user.html', user=user, posts=posts, form=form)
+    
+    return render_template('user.html', user=user, posts=posts, next_url=next_url, prev_url=prev_url, form=form)
 
 
 @app.route('/edit_profile', methods=['GET', 'POST'])

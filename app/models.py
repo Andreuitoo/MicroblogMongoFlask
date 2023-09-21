@@ -65,9 +65,9 @@ class User(UserMixin):
             self.following.append(user._id)
             self.update_2rgs({"following": self.following})
 
-    def unfollow(self, user_to_unfollow):
-        if user_to_unfollow._id != self._id and user_to_unfollow._id in self.following:
-            self.following.remove(user_to_unfollow._id)
+    def unfollow(self, user):
+        if user._id != self._id and user._id in self.following:
+            self.following.remove(user._id)
             self.update_2rgs({"following": self.following})
     
     def followed_posts(self):
