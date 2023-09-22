@@ -1,13 +1,15 @@
+import jwt
+from time import time
 from hashlib import md5
-
-from flask import flash
-from app import db, login
 from datetime import datetime
+from app import db, login, app
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 
+
 user_collection = db.users
 post_collection = db.posts
+
 
 @login.user_loader
 def load_user(user_id):
@@ -48,6 +50,14 @@ class User(UserMixin):
         if user_data:
             return User(user_data)
         return None
+    
+    @staticmethod
+    def find_by_email(email):
+        user_data = user_collection.find_one({'email': email})
+
+        if user_data:
+            return User(user_data)
+        return None
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -82,6 +92,28 @@ class User(UserMixin):
         followed_posts = followed_posts.sort("timestamp", -1)
 
         return followed_posts
+    
+    def get_reset_password_token(self, expires_in=600):
+        return jwt.encode(
+            {'reset_password': self._id, 'exp': time() + expires_in},
+            app.config['SECRET_KEY'], algorithm='HS256'
+        )
+    
+    @staticmethod
+    def verify_reset_password_token(token):
+        try:
+            payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+            user_id = payload['reset_password']
+            user = User.get_by_id(user_id)
+            return user
+        except jwt.ExpiredSignatureError:
+            return None
+        except jwt.InvalidTokenError:
+            return None
+        
+    @staticmethod
+    def get_by_id(user_id):
+        return db.users.find_one({'_id': user_id})
     
 
 class Post:
