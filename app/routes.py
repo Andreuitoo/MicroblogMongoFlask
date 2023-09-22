@@ -6,7 +6,6 @@ from flask_login import current_user, login_user, logout_user, login_required
 from app.models import User, Post
 from werkzeug.urls import url_parse
 from datetime import datetime
-from flask_babel import _, get_locale
 
 
 
@@ -16,7 +15,7 @@ def before_request():
         current_user.last_seen = datetime.utcnow()
         
         db.users.update_one(
-            {'_id': current_user._id},
+            {'_id': ObjectId(current_user._id)},
             {
                 '$set': {
                     'last_seen': current_user.last_seen,
@@ -32,14 +31,15 @@ def before_request():
 @login_required
 def index():
     form = PostForm()
+    post_collection = db.posts
     if form.validate_on_submit():
         post_data = {
             'body': form.post.data,
             'author_id': current_user._id,  
-            'timestamp': datetime.utcnow()  
+            'timestamp': datetime.utcnow(),
         }
-        Post.save(post_data)
-        flash(_('Your post is now live!'))
+        post_collection.insert_one(post_data)
+        flash(('Your post is now live!'))
         return redirect(url_for('index'))
     
     page = request.args.get('page', 1, type=int)
@@ -67,13 +67,12 @@ def index():
         }
     ]
 
-    posts_collection = db.posts
-    posts = list(posts_collection.aggregate(pipeline))
+    posts = list(post_collection.aggregate(pipeline))
 
     next_url = url_for('index', page=page + 1) if len(posts) == app.config['POSTS_PER_PAGE'] else None
     prev_url = url_for('index', page=page - 1) if page > 1 else None
     
-    return render_template("index.html", title='Home Page', form=form, posts=posts, next_url=next_url, prev_url=prev_url, user=current_user)
+    return render_template("index.html", title='Home', form=form, posts=posts, next_url=next_url, prev_url=prev_url, user=current_user)
 
 
 @app.route('/explore')
@@ -111,7 +110,7 @@ def explore():
     next_url = url_for('explore', page=page + 1) if total_posts > page * app.config['POSTS_PER_PAGE'] else None
     prev_url = url_for('explore', page=page - 1) if page > 1 else None
 
-    return render_template('index.html', title=_('Explore'), posts=posts, next_url=next_url, prev_url=prev_url, user=current_user)
+    return render_template('index.html', title=('Explore'), posts=posts, next_url=next_url, prev_url=prev_url, user=current_user)
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -246,12 +245,13 @@ def follow(username):
             return redirect(url_for('user', username=username))
         
 
-        current_user.follow(user)
-
-        if not user.is_following(current_user._id):
-            user.followers.append(current_user._id)
-        user.update()
-        flash(_('You are following {}!'.format(username)))
+        current_user_id_str = str(current_user.get_id())
+        user_id_str = str(user.get_id())
+        if user_id_str not in current_user.following:
+            current_user.follow(user)
+            user.followers.append(current_user_id_str)
+            user.update()
+            flash(('You are following {}!'.format(username)))
         return redirect(url_for('user', username=username))
     else:
         return redirect(url_for('index'))
@@ -269,9 +269,14 @@ def unfollow(username):
         if user == current_user:
             flash('You cannot unfollow yourself!')
             return redirect(url_for('user', username=username))
-        current_user.unfollow(user)
-        user.followers.remove(current_user._id)
-        user.update()
+        
+        current_user_id_str = str(current_user.get_id())
+        user_id_str = str(user.get_id())
+
+        if user_id_str in current_user.following:
+            current_user.unfollow(user)
+            user.followers.remove(current_user_id_str)
+            user.update()
         flash('You are not following {}.'.format(username))
         return redirect(url_for('user', username=username))
     else:

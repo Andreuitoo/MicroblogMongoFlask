@@ -1,4 +1,6 @@
 from hashlib import md5
+
+from flask import flash
 from app import db, login
 from datetime import datetime
 from flask_login import UserMixin
@@ -24,7 +26,8 @@ class User(UserMixin):
         self.about_me = user_data.get('about_me', '')
         self.last_seen = user_data.get('last_seen')
         self.followers = user_data.get("followers", [])
-        self.following = user_data.get("following", []) 
+        self.following = user_data.get("following", [])
+        self.avatar_uri= user_data.get('avatar', self.avatar(36))
     
     def get_id(self):
         return self._id
@@ -77,18 +80,24 @@ class User(UserMixin):
         followed_posts = post_collection.find({"user_id": {"$in": followed_ids}})
         
         followed_posts = followed_posts.sort("timestamp", -1)
-        
+
         return followed_posts
     
 
 class Post:
-    def __init__(self, post_data):
-        self.body = post_data['body']
-        self.timestamp = post_data['timestamp']
-        self.user_id = post_data['user_id']
+    def __init__(self, body, user_id):
+        self.body = body
+        self.timestamp = datetime.utcnow()
+        self.user_id = user_id
 
     def save(self):
-        post_collection.insert_one(self).inserted_id   
+        post_data = {
+            "body": self.body,
+            "timestamp": self.timestamp,
+            "user_id": self.user_id,
+        }
+        result = post_collection.insert_one(post_data)
+        self.id = result.inserted_id 
 
     @staticmethod
     def find_all_with_user_info():
@@ -96,7 +105,7 @@ class Post:
             {
                 "$lookup": {
                     "from": "users",
-                    "localfield": "user_id",
+                    "localField": "user_id",
                     "foreignField": "_id",
                     "as": "user"
                 }
