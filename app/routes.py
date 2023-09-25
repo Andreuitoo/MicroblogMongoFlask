@@ -310,14 +310,8 @@ def reset_password(token):
         return redirect(url_for('index'))
     form = ResetPasswordForm()
     if form.validate_on_submit():
-        """         passw = User({
-            '_id': None,
-            'password_hash': user_data['password_hash'],
-            'username': None,
-            'email': None
-        }) """
-        passw.set_password(form.password.data)
-        passw.save()
+        user_data.set_password(form.password.data)
+        user_data.update()
         flash('Your password has been reset.')
         return redirect(url_for('login'))
     return render_template('reset_password.html', form=form)

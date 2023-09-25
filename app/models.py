@@ -101,16 +101,13 @@ class User(UserMixin):
     
     @staticmethod
     def verify_reset_password_token(token):
-        try:
-            payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
-            user_id = payload['reset_password']
-            user = User.get_by_id(user_id)
-            return user
-        except jwt.ExpiredSignatureError:
-            return None
-        except jwt.InvalidTokenError:
-            return None
-        
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+        user_id = payload['reset_password']
+        user_data = User.get_by_id(user_id)
+        user = User(user_data) if user_data else None
+        return user
+
+
     @staticmethod
     def get_by_id(user_id):
         return db.users.find_one({'_id': user_id})
