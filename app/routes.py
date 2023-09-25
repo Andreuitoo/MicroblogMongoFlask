@@ -7,6 +7,7 @@ from app.models import User, Post
 from werkzeug.urls import url_parse
 from datetime import datetime
 from app.email import send_password_reset_email
+from flask_babel import _, get_locale
 
 
 
@@ -25,6 +26,7 @@ def before_request():
                 }
             }
         )
+        g.locale = str(get_locale())
 
 
 @app.route('/', methods=['GET', 'POST'])
@@ -34,13 +36,13 @@ def index():
     form = PostForm()
     post_collection = db.posts
     if form.validate_on_submit():
-        post_data = {
+        post_data ={
             'body': form.post.data,
-            'author_id': current_user._id,  
+            'user_id': current_user._id,  
             'timestamp': datetime.utcnow(),
         }
         post_collection.insert_one(post_data)
-        flash(('Your post is now live!'))
+        flash(_('Your post is now live!'))
         return redirect(url_for('index'))
     
     page = request.args.get('page', 1, type=int)
@@ -49,7 +51,7 @@ def index():
         {
             "$lookup": {
                 "from": "users",
-                "localField": "author_id",
+                "localField": "user_id",
                 "foreignField": "_id",
                 "as": "user"
             }
@@ -72,8 +74,11 @@ def index():
 
     next_url = url_for('index', page=page + 1) if len(posts) == app.config['POSTS_PER_PAGE'] else None
     prev_url = url_for('index', page=page - 1) if page > 1 else None
+
+    if len(posts) == 0:
+        flash("Nadie ha posteado nada todavía")
     
-    return render_template("index.html", title='Home', form=form, posts=posts, next_url=next_url, prev_url=prev_url, user=current_user)
+    return render_template("index.html", title=_('Home'), form=form, posts=posts, next_url=next_url, prev_url=prev_url, user=current_user)
 
 
 @app.route('/explore')
@@ -85,7 +90,7 @@ def explore():
         {
             "$lookup": {
                 "from": "users",
-                "localField": "author_id",
+                "localField": "user_id",
                 "foreignField": "_id",
                 "as": "user"
             }
@@ -111,7 +116,7 @@ def explore():
     next_url = url_for('explore', page=page + 1) if total_posts > page * app.config['POSTS_PER_PAGE'] else None
     prev_url = url_for('explore', page=page - 1) if page > 1 else None
 
-    return render_template('index.html', title=('Explore'), posts=posts, next_url=next_url, prev_url=prev_url, user=current_user)
+    return render_template('index.html', title=_('Explore'), posts=posts, next_url=next_url, prev_url=prev_url, user=current_user)
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -136,10 +141,10 @@ def login():
 
             return redirect(next_page)
 
-        flash('Invalid username or password')
+        flash(_('Invalid username or password'))
         return redirect(url_for('login'))
 
-    return render_template('login.html', title=('Sign In'), form=form)
+    return render_template('login.html', title=_('Sign In'), form=form)
 
 
 @app.route('/logout')
@@ -159,7 +164,7 @@ def register():
 
         existing_user = User.find_by_username(form.username.data)
         if existing_user:
-            flash('Username or email already exists. Please choose another.')
+            flash(_('Username or email already exists. Please choose another.'))
             return redirect(url_for('register'))
         
 
@@ -174,25 +179,26 @@ def register():
         new_user.set_password(form.password.data)
         new_user.save()
         
-        flash('Congratulations, you are now a registered user!')
+        flash(_('Congratulations, you are now a registered user!'))
         return redirect(url_for('login'))
     
-    return render_template('register.html', title='Register', form=form)
+    return render_template('register.html', title=_('Register'), form=form)
 
 
 @app.route('/user/<username>')
 @login_required
 def user(username):
     user = User.find_by_username(username)
+
     page = request.args.get('page', 1, type=int)
     
     user_posts_cursor = db.posts.find({'user_id': ObjectId(user._id)}).sort('timestamp', -1)
 
-    
-    total_posts = db.posts.count_documents({'user_id':ObjectId(user._id)})
+    total_posts = db.posts.count_documents({'user_id':user._id})
     
     posts = user_posts_cursor.skip((page - 1) * app.config['POSTS_PER_PAGE']).limit(app.config['POSTS_PER_PAGE'])
-    
+    flash(total_posts)
+
     next_url = url_for('user', username=username, page=page + 1) if total_posts > page * app.config['POSTS_PER_PAGE'] else None
     prev_url = url_for('user', username=username, page=page - 1) if page > 1 else None
     
@@ -219,14 +225,14 @@ def edit_profile():
             }
         )
 
-        flash('Your changes have been saved.')
+        flash(_('Your changes have been saved.'))
         return redirect(url_for('edit_profile'))
     
     elif request.method == 'GET':
         form.username.data = current_user.username
         form.about_me.data = current_user.about_me
 
-    return render_template('edit_profile.html', title='Edit Profile', form=form)
+    return render_template('edit_profile.html', title=_('Edit Profile'), form=form)
 
 
 @app.route('/follow/<username>', methods=['POST'])
@@ -238,11 +244,11 @@ def follow(username):
         user = User.find_by_username(username)
 
         if user is None:
-            flash('User {} not found.'.format(username))
+            flash(_('User {} not found.'.format(username)))
             return redirect(url_for('index'))
         
         if user == current_user:
-            flash('You cannot follow yourself!')
+            flash(_('You cannot follow yourself!'))
             return redirect(url_for('user', username=username))
         
 
@@ -252,7 +258,7 @@ def follow(username):
             current_user.follow(user)
             user.followers.append(current_user_id_str)
             user.update()
-            flash(('You are following {}!'.format(username)))
+            flash(_('You are following {}!'.format(username)))
         return redirect(url_for('user', username=username))
     else:
         return redirect(url_for('index'))
@@ -265,10 +271,10 @@ def unfollow(username):
     if form.validate_on_submit():
         user = User.find_by_username(username)
         if user is None:
-            flash('User {} not found.'.format(username))
+            flash(_('User {} not found.'.format(username)))
             return redirect(url_for('index'))
         if user == current_user:
-            flash('You cannot unfollow yourself!')
+            flash(_('You cannot unfollow yourself!'))
             return redirect(url_for('user', username=username))
         
         current_user_id_str = str(current_user.get_id())
@@ -278,7 +284,7 @@ def unfollow(username):
             current_user.unfollow(user)
             user.followers.remove(current_user_id_str)
             user.update()
-        flash('You are not following {}.'.format(username))
+        flash(_('You are not following {}.'.format(username)))
         return redirect(url_for('user', username=username))
     else:
         return redirect(url_for('index'))
@@ -293,11 +299,11 @@ def reset_password_request():
         email_user = User.find_by_email(form.email.data)
         if email_user:
             send_password_reset_email(email_user)
-            flash('Check your email for the instructions to reset your password')
+            flash(_('Check your email for the instructions to reset your password'))
         else:
-            flash('This user not exists') 
+            flash(_('This user not exists'))
         return redirect(url_for('login'))
-    return render_template('reset_password_request.html', title='Reset Password', form=form)
+    return render_template('reset_password_request.html', title=_('Reset Password'), form=form)
 
 
 @app.route('/reset_password/<token>', methods=['GET', 'POST'])
@@ -306,12 +312,12 @@ def reset_password(token):
         return redirect(url_for('index'))
     user_data = User.verify_reset_password_token(token)
     if not user_data:
-        flash('Invalid or expired token. Please request a new password reset link.')
+        flash(_('Invalid or expired token. Please request a new password reset link.'))
         return redirect(url_for('index'))
     form = ResetPasswordForm()
     if form.validate_on_submit():
         user_data.set_password(form.password.data)
         user_data.update()
-        flash('Your password has been reset.')
+        flash(_('Your password has been reset.'))
         return redirect(url_for('login'))
     return render_template('reset_password.html', form=form)
