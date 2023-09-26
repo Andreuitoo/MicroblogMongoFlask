@@ -71,7 +71,7 @@ def index():
     ]
 
     posts = list(post_collection.aggregate(pipeline))
-
+    
     next_url = url_for('index', page=page + 1) if len(posts) == app.config['POSTS_PER_PAGE'] else None
     prev_url = url_for('index', page=page - 1) if page > 1 else None
 
@@ -192,12 +192,36 @@ def user(username):
 
     page = request.args.get('page', 1, type=int)
     
-    user_posts_cursor = db.posts.find({'user_id': ObjectId(user._id)}).sort('timestamp', -1)
+    pipeline = [
+        {
+            "$match": {
+                "user_id": user._id
+            }
+        },
+        {
+            "$lookup": {
+                "from": "users",
+                "localField": "user_id",
+                "foreignField": "_id",
+                "as": "user"
+            }
+        },
+        {
+            "$unwind": "$user"
+        },
+        {
+            "$sort": {"timestamp": -1}
+        },
+        {
+            "$skip": (page - 1) * app.config['POSTS_PER_PAGE']
+        },
+        {
+            "$limit": app.config['POSTS_PER_PAGE']
+        }
+    ]
 
-    total_posts = db.posts.count_documents({'user_id':user._id})
-    
-    posts = user_posts_cursor.skip((page - 1) * app.config['POSTS_PER_PAGE']).limit(app.config['POSTS_PER_PAGE'])
-    flash(total_posts)
+    posts = list(db.posts.aggregate(pipeline))
+    total_posts = db.posts.count_documents({'user_id': user._id})
 
     next_url = url_for('user', username=username, page=page + 1) if total_posts > page * app.config['POSTS_PER_PAGE'] else None
     prev_url = url_for('user', username=username, page=page - 1) if page > 1 else None
