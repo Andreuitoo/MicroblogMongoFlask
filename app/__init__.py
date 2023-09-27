@@ -1,4 +1,6 @@
+print('hola')
 from config import Config
+print('hola2')
 import logging
 from logging.handlers import SMTPHandler, RotatingFileHandler
 import os

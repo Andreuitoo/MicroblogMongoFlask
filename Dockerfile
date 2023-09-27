@@ -11,12 +11,11 @@ RUN pip install -r requirements.txt
 RUN pip install gunicorn pymongo cryptography
 
 COPY app app
-COPY microblog.py config.py  __init__.py ./
-
+COPY microblog.py config.py ./
 
 ENV FLASK_APP microblog.py
-ENV MONGODB_URI="mongodb://mongodb:27017/microblog"
+ENV MONGODB_URI="mongodb://mongo:27017/microblog"
 
 EXPOSE 8000
-WORKDIR /home
-CMD ["gunicorn", "-b 0.0.0.0:8000", "microblog.app:app"]
+
+CMD ["gunicorn", "-b 0.0.0.0:8000", "microblog:app"]

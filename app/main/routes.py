@@ -32,6 +32,7 @@ def before_request():
 @bp.route('/index', methods=['GET', 'POST'])
 @login_required
 def index():
+    print('hola3')
     form = PostForm()
     post_collection = db.posts
     if form.validate_on_submit():
