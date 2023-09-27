@@ -124,7 +124,7 @@ class Post:
         post_data = {
             "body": self.body,
             "timestamp": self.timestamp,
-            "user_id": self.user_id,
+            "user_id": self.user_id
         }
         result = post_collection.insert_one(post_data)
         self.id = result.inserted_id 

@@ -39,6 +39,7 @@ def index():
             'body': form.post.data,
             'user_id': current_user._id,  
             'timestamp': datetime.utcnow(),
+            '__searchable__': form.post.data
         }
         post_collection.insert_one(post_data)
         flash(_('Your post is now live!'))

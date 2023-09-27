@@ -1,0 +1,9 @@
+FROM mongo:latest
+
+LABEL maintainer="tu_nombre@tucorreo.com"
+
+EXPOSE 27017
+
+WORKDIR /data/db
+
+CMD ["mongod"]
