@@ -1,6 +1,4 @@
-print('hola')
 from config import Config
-print('hola2')
 import logging
 from logging.handlers import SMTPHandler, RotatingFileHandler
 import os
@@ -13,7 +11,7 @@ from flask_babel import Babel, lazy_gettext as _l
 from pymongo import MongoClient
 
 
-mongo = MongoClient('mongodb://localhost:27017/microblog')
+mongo = MongoClient('mongodb://mongo:27017/microblog')
 db = mongo.microblog
 login = LoginManager()
 login.login_view = 'auth.login'
