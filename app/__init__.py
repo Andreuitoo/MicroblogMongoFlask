@@ -9,7 +9,6 @@ from flask_bootstrap import Bootstrap
 from flask_moment import Moment
 from flask_babel import Babel, lazy_gettext as _l
 from pymongo import MongoClient
-import os
 
 
 mongo = MongoClient(os.environ.get('MONGODB_URI') or 'mongodb://localhost:27017/microblog')

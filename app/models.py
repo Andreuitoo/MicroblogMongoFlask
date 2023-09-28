@@ -1,15 +1,18 @@
 import jwt
+import json
 from time import time
 from hashlib import md5
+from app import db, login
 from datetime import datetime
 from flask import current_app
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
-from app import db, login
 
 
 user_collection = db.users
 post_collection = db.posts
+noti_collection = db.notifications
+mess_collection = db.messages
 
 
 @login.user_loader
@@ -31,6 +34,7 @@ class User(UserMixin):
         self.followers = user_data.get("followers", [])
         self.following = user_data.get("following", [])
         self.avatar_uri= user_data.get('avatar', self.avatar(36))
+        self.last_message_read_time = user_data.get(datetime(1900, 1, 1))
     
     def get_id(self):
         return self._id
@@ -100,6 +104,13 @@ class User(UserMixin):
             current_app.config['SECRET_KEY'], algorithm='HS256'
         )
     
+    def new_messages(self):
+        last_read_time = self.last_message_read_time or datetime(1900, 1, 1)
+        return db.messages.count_documents({
+            'recipient_id': self._id,
+            'timestamp': {'$gt': last_read_time}
+        })
+
     @staticmethod
     def verify_reset_password_token(token):
         payload = jwt.decode(token, current_app.config['SECRET_KEY'], algorithms=['HS256'])
@@ -107,7 +118,6 @@ class User(UserMixin):
         user_data = User.get_by_id(user_id)
         user = User(user_data) if user_data else None
         return user
-
 
     @staticmethod
     def get_by_id(user_id):
@@ -152,3 +162,73 @@ class Post:
     @staticmethod
     def find_by_user_id(user_id):
         return post_collection.find({'user_id': user_id})
+    
+
+class Message:
+    def __init__(self, sender_id, recipient_id, body):
+        self.sender_id = sender_id
+        self.recipient_id = recipient_id
+        self.body = body
+        self.timestamp = datetime.utcnow()
+
+    def save(self):
+        mess_data = {
+            "sender_id": self.sender_id,
+            "recipient_id": self.recipient_id,
+            "body": self.body,
+            "timestamp": self.timestamp,
+        }
+        result = mess_collection.insert_one(mess_data)
+        self.id = result.inserted_id 
+    
+    @staticmethod
+    def find_by_sender(sender_id):
+        return list(db.messages.find({'sender_id': sender_id}))
+
+    @staticmethod
+    def find_by_recipient(recipient_id):
+        return list(db.messages.find({'recipient_id': recipient_id}))
+
+    def __repr__(self):
+        return f"<Message sender_id={self.sender_id}, recipient_id={self.recipient_id}, body='{self.body}'>"
+    
+
+class Notification:
+    def __init__(self, name, user_id, timestamp, payload_json):
+        self.name = name
+        self.user_id = user_id
+        self.timestamp = datetime.utcnow()
+        self.payload_json = payload_json
+
+    def get_data(self):
+        return json.loads(str(self.payload_json))
+
+    def save(self):
+        noti_data = {
+            "name": self.name,
+            "user_id": self.user_id,
+            "timestamp": self.timestamp,
+            "payload_json": self.payload_json
+        }   
+        result = noti_collection.insert_one(noti_data)
+        self.id = result.inserted_id 
+
+    @staticmethod
+    def find_all_with_user_info():
+        pipeline = [
+            {
+                "$lookup": {
+                    "from": "users",
+                    "localField": "user_id",
+                    "foreignField": "_id",
+                    "as": "user"
+                }
+            },
+            {
+                "$unwind": "$user"
+            }
+        ]
+
+        notis = noti_collection.aggregate(pipeline)
+
+        return notis

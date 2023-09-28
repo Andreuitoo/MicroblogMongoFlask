@@ -3,9 +3,10 @@ from bson import ObjectId
 from flask import render_template, flash, redirect, url_for, request, g, current_app
 from flask_login import current_user, login_required
 from flask_babel import _, get_locale
+import pymongo
 from app import db
-from app.main.forms import EditProfileForm, EmptyForm, PostForm
-from app.models import User, Post
+from app.main.forms import EditProfileForm, EmptyForm, PostForm, MessageForm
+from app.models import User, Message
 from app.main import bp
 
 
@@ -261,3 +262,45 @@ def user_popup(username):
     user = User.find_by_username(username)
     form = EmptyForm()
     return render_template('user_popup.html', user=user, form=form)
+
+
+@bp.route('/send_message/<recipient>', methods=['GET', 'POST'])
+@login_required
+def send_message(recipient):
+    user = User.find_by_username(recipient)
+    user_id = User.get_id(user)
+    form = MessageForm()
+    msg_collection = db.messages
+    if form.validate_on_submit():
+        msg_data = {
+            "sender_id": current_user._id,
+            "recipient_id": user_id,
+            "body": form.message.data,
+            "user_name": user.username,
+            "timestamp": datetime.utcnow()
+        }
+        msg_collection.insert_one(msg_data)
+        flash(_('Your message has been sent.'))
+        return redirect(url_for('main.user', username=recipient))
+    return render_template('send_message.html', title=_('Send Message'),form=form, recipient=recipient)
+
+
+@bp.route('/messages')
+@login_required
+def messages():
+    current_user.last_message_read_time = datetime.utcnow()
+
+    page = request.args.get('page', 1, type=int)
+    per_page = current_app.config['POSTS_PER_PAGE']
+
+    messages = db.messages.find(
+        {'recipient_id': current_user._id}
+    ).sort('timestamp', pymongo.DESCENDING).skip((page - 1) * per_page).limit(per_page)
+
+    total_messages = db.messages.count_documents({'recipient_id': current_user._id})
+    total_pages = (total_messages - 1) // per_page + 1
+
+    next_url = url_for('main.messages', page=page + 1) if page < total_pages else None
+    prev_url = url_for('main.messages', page=page - 1) if page > 1 else None
+
+    return render_template('messages.html', messages=messages, next_url=next_url, prev_url=prev_url)

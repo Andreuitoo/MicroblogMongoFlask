@@ -1,0 +1,16 @@
+<table class="table table-hover">
+    <tr>
+        <td>
+            {% set user_link %}
+                <span class="user_popup">
+                    {{ msg.user_name }}
+                </span>
+            {% endset %}
+
+            {{ _('%(username)s said %(when)s',
+                username=user_link, when=moment(msg.timestamp).fromNow()) }}
+            <br>
+            {{ msg.body }}
+        </td>
+    </tr>
+</table>
