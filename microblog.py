@@ -1,10 +1,8 @@
-from app import create_app, db, cli
+from app import create_app, cli, db
 from app.models import User, Post
 
 
 app = create_app()
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
 cli.register(app)
 
 

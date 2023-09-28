@@ -1,7 +1,6 @@
 from datetime import datetime
 from bson import ObjectId
-from flask import render_template, flash, redirect, url_for, request, g, \
-    jsonify, current_app
+from flask import render_template, flash, redirect, url_for, request, g, current_app
 from flask_login import current_user, login_required
 from flask_babel import _, get_locale
 from app import db
@@ -32,7 +31,6 @@ def before_request():
 @bp.route('/index', methods=['GET', 'POST'])
 @login_required
 def index():
-    print('hola3')
     form = PostForm()
     post_collection = db.posts
     if form.validate_on_submit():
@@ -255,3 +253,11 @@ def unfollow(username):
         return redirect(url_for('main.user', username=username))
     else:
         return redirect(url_for('main.index'))
+    
+
+@bp.route('/user/<username>/popup')
+@login_required
+def user_popup(username):
+    user = User.find_by_username(username)
+    form = EmptyForm()
+    return render_template('user_popup.html', user=user, form=form)

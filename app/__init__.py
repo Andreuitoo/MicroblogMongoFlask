@@ -9,10 +9,12 @@ from flask_bootstrap import Bootstrap
 from flask_moment import Moment
 from flask_babel import Babel, lazy_gettext as _l
 from pymongo import MongoClient
+import os
 
 
-mongo = MongoClient('mongodb://mongo:27017/microblog')
+mongo = MongoClient(os.environ.get('MONGODB_URI') or 'mongodb://localhost:27017/microblog')
 db = mongo.microblog
+db.users.create_index([('username', 1)], unique=True)
 login = LoginManager()
 login.login_view = 'auth.login'
 login.login_message = _l('Please log in to access this page.')
@@ -21,7 +23,7 @@ mail = Mail()
 bootstrap = Bootstrap()
 moment = Moment()
 babel = Babel()
-db.users.create_index([('username', 1)], unique=True)
+
 
 
 def create_app(config_class=Config):
@@ -75,7 +77,6 @@ def create_app(config_class=Config):
             app.logger.info('Microblog startup')
 
     return app
-
 
 @babel.localeselector
 def get_locale():
