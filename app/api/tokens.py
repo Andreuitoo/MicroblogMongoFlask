@@ -1,5 +1,5 @@
+from datetime import datetime
 from flask import jsonify
-from app import db
 from app.api import bp
 from app.api.auth import basic_auth, token_auth
 
@@ -8,7 +8,8 @@ from app.api.auth import basic_auth, token_auth
 @basic_auth.login_required
 def get_token():
     token = basic_auth.current_user().get_token()
-    db.session.commit()
+    basic_auth.current_user().token = token
+    basic_auth.current_user().update()
     return jsonify({'token': token})
 
 
@@ -16,5 +17,7 @@ def get_token():
 @token_auth.login_required
 def revoke_token():
     token_auth.current_user().revoke_token()
-    db.session.commit()
+    token_auth.current_user().token = ''
+    token_auth.current_user().token_expiration = datetime.utcnow()
+    token_auth.current_user().update()
     return '', 204

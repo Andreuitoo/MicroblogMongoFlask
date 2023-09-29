@@ -1,10 +1,12 @@
+import base64
 import math
+import os
 import jwt
 import json
 from time import time
 from hashlib import md5
 from app import db, login
-from datetime import datetime
+from datetime import datetime, timedelta
 from flask_login import UserMixin
 from flask import current_app, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -24,32 +26,7 @@ def load_user(user_id):
     return None
 
 
-class PaginatedAPIMixin(object):
-    @staticmethod
-    def to_collection_dict(query, page, per_page, endpoint, **kwargs):
-        resources = query.paginate(page=page, per_page=per_page,
-                                   error_out=False)
-        data = {
-            'items': [item.to_dict() for item in resources.items],
-            '_meta': {
-                'page': page,
-                'per_page': per_page,
-                'total_pages': resources.pages,
-                'total_items': resources.total
-            },
-            '_links': {
-                'self': url_for(endpoint, page=page, per_page=per_page,
-                                **kwargs),
-                'next': url_for(endpoint, page=page + 1, per_page=per_page,
-                                **kwargs) if resources.has_next else None,
-                'prev': url_for(endpoint, page=page - 1, per_page=per_page,
-                                **kwargs) if resources.has_prev else None
-            }
-        }
-        return data
-
-
-class User(PaginatedAPIMixin, UserMixin):
+class User(UserMixin):
     def __init__(self, user_data):
         self._id = str(user_data['_id'])
         self.username = user_data['username']
@@ -61,7 +38,36 @@ class User(PaginatedAPIMixin, UserMixin):
         self.following = user_data.get("following", [])
         self.avatar_uri= user_data.get('avatar', self.avatar(36))
         self.last_message_read_time = user_data.get(datetime(1900, 1, 1))
-    
+        self.token = user_data.get('token', '')
+        self.token_expiration = user_data.get('token_expiration', '')
+
+    def get_token(self, expires_in=3600):
+        now = datetime.utcnow()
+        if self.token and self.token_expiration > now + timedelta(seconds=60):
+            return self.token
+        self.token = base64.b64encode(os.urandom(24)).decode('utf-8')
+        self.token_expiration = now + timedelta(seconds=expires_in)
+        user = User.find_by_username(self.username)
+        
+        return self.token
+
+    def revoke_token(self):
+        self.token_expiration = datetime.utcnow() - timedelta(seconds=1)
+
+    @staticmethod
+    def check_token(token):
+        user = User.find_by_token(token)
+        if user is None or user.token_expiration < datetime.utcnow():
+            return None
+        return user
+
+    def find_by_token(token):
+        user_data = user_collection.find_one({'token': token})
+
+        if user_data:
+            return User(user_data)
+        return None
+
     def get_id(self):
         return self._id
 
@@ -169,9 +175,7 @@ class User(PaginatedAPIMixin, UserMixin):
             if field in data:
                 setattr(self, field, data[field])
         if new_user and 'password' in data:
-            print('creo que voy a fallar')
             self.set_password(data['password'])
-            print('he fallado aqui')
 
     @staticmethod
     def verify_reset_password_token(token):
