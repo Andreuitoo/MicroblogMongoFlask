@@ -1,11 +1,12 @@
+import math
 import jwt
 import json
 from time import time
 from hashlib import md5
 from app import db, login
 from datetime import datetime
-from flask import current_app
 from flask_login import UserMixin
+from flask import current_app, url_for
 from werkzeug.security import generate_password_hash, check_password_hash
 
 
@@ -23,7 +24,32 @@ def load_user(user_id):
     return None
 
 
-class User(UserMixin):
+class PaginatedAPIMixin(object):
+    @staticmethod
+    def to_collection_dict(query, page, per_page, endpoint, **kwargs):
+        resources = query.paginate(page=page, per_page=per_page,
+                                   error_out=False)
+        data = {
+            'items': [item.to_dict() for item in resources.items],
+            '_meta': {
+                'page': page,
+                'per_page': per_page,
+                'total_pages': resources.pages,
+                'total_items': resources.total
+            },
+            '_links': {
+                'self': url_for(endpoint, page=page, per_page=per_page,
+                                **kwargs),
+                'next': url_for(endpoint, page=page + 1, per_page=per_page,
+                                **kwargs) if resources.has_next else None,
+                'prev': url_for(endpoint, page=page - 1, per_page=per_page,
+                                **kwargs) if resources.has_prev else None
+            }
+        }
+        return data
+
+
+class User(PaginatedAPIMixin, UserMixin):
     def __init__(self, user_data):
         self._id = str(user_data['_id'])
         self.username = user_data['username']
@@ -110,6 +136,42 @@ class User(UserMixin):
             'recipient_id': self._id,
             'timestamp': {'$gt': last_read_time}
         })
+    
+    def add_notification(self, name, data):
+        noti_collection.delete_many({"user_id": self._id, "name": name})
+
+        notification = {
+            "name": name,
+            "payload_json": json.dumps(data),
+            "user_id": self._id
+        }
+
+        noti_collection.insert_one(notification)
+
+        return notification
+
+    def to_dict(self, include_email=False):
+        data = {
+            '_id': self._id,
+            'username': self.username,
+            'last_seen': self.last_seen or datetime.utcnow(),
+            'about_me': self.about_me,
+            'followers': self.followers,
+            'following': self.following,
+            'avatar_uri': self.avatar_uri,
+            'last_message_read_time': self.last_message_read_time or datetime.utcnow(),
+            'email': self.email if include_email else None
+        }
+        return data
+    
+    def from_dict(self, data, new_user=False):
+        for field in ['username', 'email', 'about_me']:
+            if field in data:
+                setattr(self, field, data[field])
+        if new_user and 'password' in data:
+            print('creo que voy a fallar')
+            self.set_password(data['password'])
+            print('he fallado aqui')
 
     @staticmethod
     def verify_reset_password_token(token):
